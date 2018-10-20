@@ -1,0 +1,10 @@
+[package]
+name = "learn_opengl"
+version = "0.1.0"
+authors = ["Robert Węcławski <r.weclawski@gmail.com>"]
+
+[dependencies]
+gl = "0.10.0"
+glutin = "0.18.0"
+cgmath = "0.16.1"
+image = "0.20.0"
