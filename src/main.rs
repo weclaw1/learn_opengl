@@ -2,8 +2,14 @@
 
 extern crate gl;
 extern crate glutin;
+extern crate cgmath;
 
 mod triangle;
+mod shaders;
+mod utils;
+
+use std::time::{Duration, Instant};
+use std::ffi::{CString};
 
 use glutin::dpi::*;
 use glutin::{GlContext, GlRequest, GlWindow, EventsLoop, Api};
@@ -40,9 +46,10 @@ unsafe fn configure_opengl(gl_window: &GlWindow) {
 }
 
 fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
+    //let start_time = Instant::now();
     let mut running = true;
-    let shader_programs = unsafe { triangle::create_two_shader_programs() };
-    let vaos = unsafe { triangle::create_two_vertex_array_objects_two_triangles() };
+    let shader_program = unsafe { shaders::create_shader_program_with_color() };
+    let vao = unsafe { shaders::create_vertex_array_object_with_colors() };
     while running {
         events_loop.poll_events(|event| {
             match event {
@@ -60,12 +67,15 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
         unsafe { 
             gl::Clear(gl::COLOR_BUFFER_BIT); 
 
-            gl::UseProgram(shader_programs[0]);
-            gl::BindVertexArray(vaos[0]);
-            gl::DrawArrays(gl::TRIANGLES, 0, 3);
+            gl::UseProgram(shader_program);
+            gl::BindVertexArray(vao);
 
-            gl::UseProgram(shader_programs[1]);
-            gl::BindVertexArray(vaos[1]);
+            //let time_since_start = (start_time.elapsed().as_secs() * 10 + (start_time.elapsed().subsec_millis() / 100) as u64) as f32;
+            //let green_value = time_since_start.sin() / 2.0 + 0.5;
+            //let our_color = CString::new("ourColor").unwrap();
+            //let vertex_color_location = gl::GetUniformLocation(shader_program, our_color.as_ptr());
+            //gl::Uniform4f(vertex_color_location, 0.0, green_value, 0.0, 1.0);
+
             gl::DrawArrays(gl::TRIANGLES, 0, 3);
         }
         gl_window.swap_buffers().unwrap();
