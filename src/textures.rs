@@ -88,8 +88,9 @@ pub unsafe fn load_and_create_texture(file_path: &Path) -> GLuint {
     gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
     // load image, create texture and generate mipmaps
     let img = image::open(file_path).expect("Failed to load texture");
-    
+    let img = img.flipv();
     let data = img.raw_pixels();
+
     gl::TexImage2D(
         gl::TEXTURE_2D,
         0,

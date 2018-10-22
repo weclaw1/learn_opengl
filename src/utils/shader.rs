@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::Read;
 use std::ptr;
 use std::str;
+use std::path::Path;
 
 use gl;
 use gl::types::*;
@@ -15,13 +16,13 @@ pub struct Shader {
 }
 
 impl Shader {
-    pub fn new(vertex_path: &str, fragment_path: &str) -> Shader {
+    pub fn new(vertex_path: &Path, fragment_path: &Path) -> Shader {
         let mut shader = Shader { id: 0 };
         // 1. retrieve the vertex/fragment source code from filesystem
         let mut vertex_shader_file = File::open(vertex_path)
-            .unwrap_or_else(|_| panic!("Failed to open {}", vertex_path));
+            .unwrap_or_else(|_| panic!("Failed to open {}", vertex_path.to_str().unwrap()));
         let mut fragment_shader_file = File::open(fragment_path)
-            .unwrap_or_else(|_| panic!("Failed to open {}", fragment_path));
+            .unwrap_or_else(|_| panic!("Failed to open {}", fragment_path.to_str().unwrap()));
         let mut vertex_shader_code = String::new();
         let mut fragment_shader_code = String::new();
         vertex_shader_file
