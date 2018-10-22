@@ -3,10 +3,12 @@
 extern crate gl;
 extern crate glutin;
 extern crate cgmath;
+extern crate image;
 
 mod triangle;
 mod shaders;
 mod utils;
+mod textures;
 
 use std::time::{Duration, Instant};
 use std::ffi::{CString};
