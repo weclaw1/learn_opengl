@@ -10,18 +10,23 @@ mod textures;
 mod triangle;
 mod utils;
 
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use glutin::dpi::*;
 use glutin::{Api, EventsLoop, GlContext, GlRequest, GlWindow};
 
+use cgmath::prelude::*;
+use cgmath::{Matrix4, vec3, Rad, Deg};
+
 use utils::shader::Shader;
 
 // settings
 const SCR_WIDTH: f64 = 800.0;
 const SCR_HEIGHT: f64 = 600.0;
+
+const MS_PER_FRAME: u64 = 16;
 
 fn main() {
     let mut events_loop = glutin::EventsLoop::new();
@@ -53,17 +58,19 @@ unsafe fn configure_opengl(gl_window: &GlWindow) {
 }
 
 fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
-    //let start_time = Instant::now();
     let mut running = true;
     let shader_program = Shader::new(
-        Path::new("src/shaders/texture.vs"),
-        Path::new("src/shaders/texture.fs"),
+        Path::new("src/shaders/transform.vs"),
+        Path::new("src/shaders/transform.fs"),
     );
 
     let vao = unsafe { textures::create_vertex_array_object() };
     let texture = unsafe { textures::load_and_create_texture( Path::new("resources/snoop_dogg.jpg") ) };
 
+    let mut transform_matrix: Matrix4<f32> = Matrix4::identity();
+
     while running {
+        let start_time = Instant::now();
         events_loop.poll_events(|event| match event {
             glutin::Event::WindowEvent { event, .. } => match event {
                 glutin::WindowEvent::CloseRequested => running = false,
@@ -78,12 +85,25 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
         unsafe {
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
+            gl::ActiveTexture(gl::TEXTURE0);
             gl::BindTexture(gl::TEXTURE_2D, texture);
+
+            //create transformations
+            
+            //transform_matrix = transform_matrix * Matrix4::<f32>::from_translation(vec3(0.5, -0.5, 0.0));
+            transform_matrix = transform_matrix * Matrix4::<f32>::from_angle_z(Deg(2.0));
+            let transform_matrix_window_scale = transform_matrix * Matrix4::<f32>::from_nonuniform_scale(1.0, (SCR_HEIGHT / SCR_WIDTH) as f32, 1.0);
+
             shader_program.use_program();
+            shader_program.set_matrix4(&CString::new("transform").unwrap(), &transform_matrix_window_scale);
+
             gl::BindVertexArray(vao);
 
             gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, std::ptr::null());
         }
         gl_window.swap_buffers().unwrap();
+        if let Some(remaining_duration) = Duration::from_millis(MS_PER_FRAME).checked_sub(start_time.elapsed()) {
+            std::thread::sleep(remaining_duration);
+        } 
     }
 }
