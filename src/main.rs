@@ -26,7 +26,7 @@ use utils::shader::Shader;
 const SCR_WIDTH: f64 = 800.0;
 const SCR_HEIGHT: f64 = 600.0;
 
-const MS_PER_FRAME: u64 = 16;
+const DURATION_PER_UPDATE: Duration = Duration::from_millis(16);
 
 fn main() {
     let mut events_loop = glutin::EventsLoop::new();
@@ -59,6 +59,8 @@ unsafe fn configure_opengl(gl_window: &GlWindow) {
 
 fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
     let mut running = true;
+    let mut previous_time = Instant::now();
+    let mut lag = Duration::new(0, 0);
     let shader_program = Shader::new(
         Path::new("src/shaders/transform.vs"),
         Path::new("src/shaders/transform.fs"),
@@ -68,9 +70,13 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
     let texture = unsafe { textures::load_and_create_texture( Path::new("resources/snoop_dogg.jpg") ) };
 
     let mut transform_matrix: Matrix4<f32> = Matrix4::identity();
+    let mut transform_matrix_window_scale: Matrix4<f32> = transform_matrix;
 
     while running {
-        let start_time = Instant::now();
+        let elapsed = previous_time.elapsed();
+        previous_time = Instant::now();
+        lag += elapsed;
+        
         events_loop.poll_events(|event| match event {
             glutin::Event::WindowEvent { event, .. } => match event {
                 glutin::WindowEvent::CloseRequested => running = false,
@@ -82,17 +88,20 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
             },
             _ => (),
         });
+        while lag >= DURATION_PER_UPDATE {
+            //create transformations
+            
+            //transform_matrix = transform_matrix * Matrix4::<f32>::from_translation(vec3(0.5, -0.5, 0.0));
+            transform_matrix = transform_matrix * Matrix4::<f32>::from_angle_z(Deg(2.0));
+            transform_matrix_window_scale = transform_matrix * Matrix4::<f32>::from_nonuniform_scale(1.0, (SCR_HEIGHT / SCR_WIDTH) as f32, 1.0);
+
+            lag -= DURATION_PER_UPDATE;
+        }
         unsafe {
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
             gl::ActiveTexture(gl::TEXTURE0);
             gl::BindTexture(gl::TEXTURE_2D, texture);
-
-            //create transformations
-            
-            //transform_matrix = transform_matrix * Matrix4::<f32>::from_translation(vec3(0.5, -0.5, 0.0));
-            transform_matrix = transform_matrix * Matrix4::<f32>::from_angle_z(Deg(2.0));
-            let transform_matrix_window_scale = transform_matrix * Matrix4::<f32>::from_nonuniform_scale(1.0, (SCR_HEIGHT / SCR_WIDTH) as f32, 1.0);
 
             shader_program.use_program();
             shader_program.set_matrix4(&CString::new("transform").unwrap(), &transform_matrix_window_scale);
@@ -102,8 +111,5 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
             gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, std::ptr::null());
         }
         gl_window.swap_buffers().unwrap();
-        if let Some(remaining_duration) = Duration::from_millis(MS_PER_FRAME).checked_sub(start_time.elapsed()) {
-            std::thread::sleep(remaining_duration);
-        } 
     }
 }
