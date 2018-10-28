@@ -8,6 +8,7 @@ extern crate image;
 mod shaders;
 mod textures;
 mod triangle;
+mod coordinate;
 mod utils;
 
 use std::ffi::{CStr, CString};
@@ -58,19 +59,32 @@ unsafe fn configure_opengl(gl_window: &GlWindow) {
 }
 
 fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
+    // configure global opengl state
+    // -----------------------------
+    unsafe { gl::Enable(gl::DEPTH_TEST); }
+
     let mut running = true;
     let mut previous_time = Instant::now();
     let mut lag = Duration::new(0, 0);
     let shader_program = Shader::new(
-        Path::new("src/shaders/transform.vs"),
-        Path::new("src/shaders/transform.fs"),
+        Path::new("src/shaders/coordinate.vs"),
+        Path::new("src/shaders/coordinate.fs"),
     );
 
-    let vao = unsafe { textures::create_vertex_array_object() };
-    let texture = unsafe { textures::load_and_create_texture( Path::new("resources/snoop_dogg.jpg") ) };
+    let vao = unsafe { coordinate::create_vertex_array_object() };
+    let (texture_1, texture_2) = unsafe { coordinate::load_and_create_textures( Path::new("resources/crate.jpg"), Path::new("resources/snoop_dogg.jpg") ) };
 
-    let mut transform_matrix: Matrix4<f32> = Matrix4::identity();
-    let mut transform_matrix_window_scale: Matrix4<f32> = transform_matrix;
+    // tell opengl for each sampler to which texture unit it belongs to (only has to be done once)
+    // -------------------------------------------------------------------------------------------
+    unsafe {
+        shader_program.use_program();
+        shader_program.set_int(&CString::new("texture_1").unwrap(), 0);
+        shader_program.set_int(&CString::new("texture_2").unwrap(), 1);
+    }
+
+    let mut model: Matrix4<f32> = Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(50.0));
+    let view: Matrix4<f32> = Matrix4::from_translation(vec3(0.0, 0.0, -3.0));
+    let projection: Matrix4<f32> = cgmath::perspective(Deg(45.0), SCR_WIDTH as f32 / SCR_HEIGHT as f32, 0.1, 100.0);
 
     while running {
         let elapsed = previous_time.elapsed();
@@ -92,23 +106,27 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
             //create transformations
             
             //transform_matrix = transform_matrix * Matrix4::<f32>::from_translation(vec3(0.5, -0.5, 0.0));
-            transform_matrix = transform_matrix * Matrix4::<f32>::from_angle_z(Deg(2.0));
-            transform_matrix_window_scale = transform_matrix * Matrix4::<f32>::from_nonuniform_scale(1.0, (SCR_HEIGHT / SCR_WIDTH) as f32, 1.0);
+            //transform_matrix = transform_matrix * Matrix4::<f32>::from_angle_z(Deg(2.0));
+            model = model * Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(2.0));
 
             lag -= DURATION_PER_UPDATE;
         }
         unsafe {
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 
             gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::BindTexture(gl::TEXTURE_2D, texture_1);
+            gl::ActiveTexture(gl::TEXTURE1);
+            gl::BindTexture(gl::TEXTURE_2D, texture_2);
 
             shader_program.use_program();
-            shader_program.set_matrix4(&CString::new("transform").unwrap(), &transform_matrix_window_scale);
+            shader_program.set_matrix4(&CString::new("model").unwrap(), &model);
+            shader_program.set_matrix4(&CString::new("view").unwrap(), &view);
+            shader_program.set_matrix4(&CString::new("projection").unwrap(), &projection);
 
             gl::BindVertexArray(vao);
 
-            gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, std::ptr::null());
+            gl::DrawArrays(gl::TRIANGLES, 0, 36);
         }
         gl_window.swap_buffers().unwrap();
     }
