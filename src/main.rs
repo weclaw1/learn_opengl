@@ -5,10 +5,10 @@ extern crate gl;
 extern crate glutin;
 extern crate image;
 
+mod coordinate;
 mod shaders;
 mod textures;
 mod triangle;
-mod coordinate;
 mod utils;
 
 use std::ffi::{CStr, CString};
@@ -19,7 +19,7 @@ use glutin::dpi::*;
 use glutin::{Api, EventsLoop, GlContext, GlRequest, GlWindow};
 
 use cgmath::prelude::*;
-use cgmath::{Matrix4, vec3, Rad, Deg};
+use cgmath::{vec3, Deg, Matrix4, Rad, Vector3};
 
 use utils::shader::Shader;
 
@@ -61,7 +61,30 @@ unsafe fn configure_opengl(gl_window: &GlWindow) {
 fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
     // configure global opengl state
     // -----------------------------
-    unsafe { gl::Enable(gl::DEPTH_TEST); }
+    unsafe {
+        gl::Enable(gl::DEPTH_TEST);
+    }
+
+    // world space positions of our cubes
+    let cube_positions: [Vector3<f32>; 10] = [
+        vec3(0.0, 0.0, 0.0),
+        vec3(2.0, 5.0, -15.0),
+        vec3(-1.5, -2.2, -2.5),
+        vec3(-3.8, -2.0, -12.3),
+        vec3(2.4, -0.4, -3.5),
+        vec3(-1.7, 3.0, -7.5),
+        vec3(1.3, -2.0, -2.5),
+        vec3(1.5, 2.0, -2.5),
+        vec3(1.5, 0.2, -1.5),
+        vec3(-1.3, 1.0, -1.5),
+    ];
+
+    let mut cube_models: Vec<Matrix4<f32>> = cube_positions.iter()
+                                                           .map(|x| Matrix4::from_translation(*x))
+                                                           .enumerate()
+                                                           .map(|(i, x)| x * Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(i as f32 * 20.0)))
+                                                           .collect();
+    
 
     let mut running = true;
     let mut previous_time = Instant::now();
@@ -72,7 +95,12 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
     );
 
     let vao = unsafe { coordinate::create_vertex_array_object() };
-    let (texture_1, texture_2) = unsafe { coordinate::load_and_create_textures( Path::new("resources/crate.jpg"), Path::new("resources/snoop_dogg.jpg") ) };
+    let (texture_1, texture_2) = unsafe {
+        coordinate::load_and_create_textures(
+            Path::new("resources/crate.jpg"),
+            Path::new("resources/snoop_dogg.jpg"),
+        )
+    };
 
     // tell opengl for each sampler to which texture unit it belongs to (only has to be done once)
     // -------------------------------------------------------------------------------------------
@@ -82,15 +110,17 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
         shader_program.set_int(&CString::new("texture_2").unwrap(), 1);
     }
 
-    let mut model: Matrix4<f32> = Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(50.0));
+    let mut model: Matrix4<f32> =
+        Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(50.0));
     let view: Matrix4<f32> = Matrix4::from_translation(vec3(0.0, 0.0, -3.0));
-    let projection: Matrix4<f32> = cgmath::perspective(Deg(45.0), SCR_WIDTH as f32 / SCR_HEIGHT as f32, 0.1, 100.0);
+    let projection: Matrix4<f32> =
+        cgmath::perspective(Deg(45.0), SCR_WIDTH as f32 / SCR_HEIGHT as f32, 0.1, 100.0);
 
     while running {
         let elapsed = previous_time.elapsed();
         previous_time = Instant::now();
         lag += elapsed;
-        
+
         events_loop.poll_events(|event| match event {
             glutin::Event::WindowEvent { event, .. } => match event {
                 glutin::WindowEvent::CloseRequested => running = false,
@@ -104,10 +134,12 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
         });
         while lag >= DURATION_PER_UPDATE {
             //create transformations
-            
+
             //transform_matrix = transform_matrix * Matrix4::<f32>::from_translation(vec3(0.5, -0.5, 0.0));
             //transform_matrix = transform_matrix * Matrix4::<f32>::from_angle_z(Deg(2.0));
-            model = model * Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(2.0));
+            //model = model * Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(2.0));
+
+            cube_models = cube_models.iter().map(|x| x * Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(2.0))).collect();
 
             lag -= DURATION_PER_UPDATE;
         }
@@ -126,7 +158,10 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
 
             gl::BindVertexArray(vao);
 
-            gl::DrawArrays(gl::TRIANGLES, 0, 36);
+            for cube_model in cube_models.iter() {
+                shader_program.set_matrix4(&CString::new("model").unwrap(), &cube_model);
+                gl::DrawArrays(gl::TRIANGLES, 0, 36);
+            }
         }
         gl_window.swap_buffers().unwrap();
     }
