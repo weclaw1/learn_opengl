@@ -16,11 +16,15 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use glutin::dpi::*;
-use glutin::{Api, EventsLoop, GlContext, GlRequest, GlWindow};
+use glutin::ElementState::{Pressed, Released};
+use glutin::VirtualKeyCode;
+use glutin::WindowEvent::*;
+use glutin::{Api, Event, EventsLoop, GlContext, GlRequest, GlWindow};
 
 use cgmath::prelude::*;
-use cgmath::{vec3, Deg, Matrix4, Rad, Vector3};
+use cgmath::{vec3, Deg, Matrix4, Point3, Rad, Vector3};
 
+use utils::input::Input;
 use utils::shader::Shader;
 
 // settings
@@ -29,6 +33,18 @@ const SCR_HEIGHT: f64 = 600.0;
 
 const DURATION_PER_UPDATE: Duration = Duration::from_millis(16);
 
+// camera
+const CAMERA_FRONT: Vector3<f32> = Vector3 {
+    x: 0.0,
+    y: 0.0,
+    z: -1.0,
+};
+const CAMERA_UP: Vector3<f32> = Vector3 {
+    x: 0.0,
+    y: 1.0,
+    z: 0.0,
+};
+
 fn main() {
     let mut events_loop = glutin::EventsLoop::new();
     let gl_window = create_gl_window(&events_loop);
@@ -36,7 +52,7 @@ fn main() {
         configure_opengl(&gl_window);
     }
 
-    run_event_loop(&mut events_loop, &gl_window);
+    run_game_loop(&mut events_loop, &gl_window);
 }
 
 fn create_gl_window(events_loop: &EventsLoop) -> GlWindow {
@@ -48,7 +64,11 @@ fn create_gl_window(events_loop: &EventsLoop) -> GlWindow {
         .with_gl(GlRequest::Specific(Api::OpenGl, (3, 3)))
         .with_vsync(true);
 
-    return glutin::GlWindow::new(window, context, events_loop).unwrap();
+    let gl_window = glutin::GlWindow::new(window, context, events_loop).unwrap();
+    gl_window.set_cursor_position(LogicalPosition::new(SCR_WIDTH / 2.0, SCR_HEIGHT / 2.0)).unwrap();
+    gl_window.grab_cursor(true).unwrap();
+    gl_window.hide_cursor(true);
+    return gl_window;
 }
 
 unsafe fn configure_opengl(gl_window: &GlWindow) {
@@ -58,7 +78,7 @@ unsafe fn configure_opengl(gl_window: &GlWindow) {
     gl::Clear(gl::COLOR_BUFFER_BIT);
 }
 
-fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
+fn run_game_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
     // configure global opengl state
     // -----------------------------
     unsafe {
@@ -79,12 +99,15 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
         vec3(-1.3, 1.0, -1.5),
     ];
 
-    let mut cube_models: Vec<Matrix4<f32>> = cube_positions.iter()
-                                                           .map(|x| Matrix4::from_translation(*x))
-                                                           .enumerate()
-                                                           .map(|(i, x)| x * Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(i as f32 * 20.0)))
-                                                           .collect();
-    
+    let mut cube_models: Vec<Matrix4<f32>> = cube_positions
+        .iter()
+        .map(|x| Matrix4::from_translation(*x))
+        .enumerate()
+        .map(|(i, x)| {
+            x * Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(i as f32 * 20.0))
+        }).collect();
+
+    let mut camera_position = Point3::new(0.0, 0.0, 3.0);
 
     let mut running = true;
     let mut previous_time = Instant::now();
@@ -112,34 +135,42 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
 
     let mut model: Matrix4<f32> =
         Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(50.0));
-    let view: Matrix4<f32> = Matrix4::from_translation(vec3(0.0, 0.0, -3.0));
     let projection: Matrix4<f32> =
         cgmath::perspective(Deg(45.0), SCR_WIDTH as f32 / SCR_HEIGHT as f32, 0.1, 100.0);
+
+    let mut input: Input = Input::new();
 
     while running {
         let elapsed = previous_time.elapsed();
         previous_time = Instant::now();
         lag += elapsed;
 
-        events_loop.poll_events(|event| match event {
-            glutin::Event::WindowEvent { event, .. } => match event {
-                glutin::WindowEvent::CloseRequested => running = false,
-                glutin::WindowEvent::Resized(logical_size) => {
-                    let dpi_factor = gl_window.get_hidpi_factor();
-                    gl_window.resize(logical_size.to_physical(dpi_factor));
-                }
-                _ => (),
-            },
-            _ => (),
-        });
+        process_input(&mut input, events_loop, gl_window);
+
         while lag >= DURATION_PER_UPDATE {
             //create transformations
+            let camera_speed = 5.0 * DURATION_PER_UPDATE.subsec_millis() as f32 / 1000.0;
 
-            //transform_matrix = transform_matrix * Matrix4::<f32>::from_translation(vec3(0.5, -0.5, 0.0));
-            //transform_matrix = transform_matrix * Matrix4::<f32>::from_angle_z(Deg(2.0));
-            //model = model * Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(2.0));
+            if input.up() {
+                camera_position += camera_speed * CAMERA_FRONT;
+            }
+            if input.down() {
+                camera_position += -(camera_speed * CAMERA_FRONT);
+            }
+            if input.left() {
+                camera_position += -(CAMERA_FRONT.cross(CAMERA_UP).normalize() * camera_speed);
+            }
+            if input.right() {
+                camera_position += CAMERA_FRONT.cross(CAMERA_UP).normalize() * camera_speed;
+            }
+            if input.close() {
+                running = false;
+            }
 
-            cube_models = cube_models.iter().map(|x| x * Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(2.0))).collect();
+            cube_models = cube_models
+                .iter()
+                .map(|x| x * Matrix4::from_axis_angle(vec3(0.5, 1.0, 0.0).normalize(), Deg(2.0)))
+                .collect();
 
             lag -= DURATION_PER_UPDATE;
         }
@@ -153,6 +184,8 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
 
             shader_program.use_program();
             shader_program.set_matrix4(&CString::new("model").unwrap(), &model);
+
+            let view: Matrix4<f32> = Matrix4::look_at(camera_position, camera_position + CAMERA_FRONT, CAMERA_UP);
             shader_program.set_matrix4(&CString::new("view").unwrap(), &view);
             shader_program.set_matrix4(&CString::new("projection").unwrap(), &projection);
 
@@ -165,4 +198,50 @@ fn run_event_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
         }
         gl_window.swap_buffers().unwrap();
     }
+}
+
+fn process_input(input: &mut Input, events_loop: &mut EventsLoop, gl_window: &GlWindow) {
+    events_loop.poll_events(|event| {
+        if let Event::WindowEvent { event, .. } = event {
+            match event {
+                CloseRequested => input.set_close(true),
+                Resized(logical_size) => {
+                    let dpi_factor = gl_window.get_hidpi_factor();
+                    gl_window.resize(logical_size.to_physical(dpi_factor));
+                }
+                KeyboardInput {
+                    input:
+                        glutin::KeyboardInput {
+                            virtual_keycode: Some(key),
+                            state: Pressed,
+                            ..
+                        },
+                    ..
+                } => match key {
+                    VirtualKeyCode::W => input.set_up(true),
+                    VirtualKeyCode::S => input.set_down(true),
+                    VirtualKeyCode::A => input.set_left(true),
+                    VirtualKeyCode::D => input.set_right(true),
+                    VirtualKeyCode::Escape => input.set_close(true),
+                    _ => (),
+                },
+                KeyboardInput {
+                    input:
+                        glutin::KeyboardInput {
+                            virtual_keycode: Some(key),
+                            state: Released,
+                            ..
+                        },
+                    ..
+                } => match key {
+                    VirtualKeyCode::W => input.set_up(false),
+                    VirtualKeyCode::S => input.set_down(false),
+                    VirtualKeyCode::A => input.set_left(false),
+                    VirtualKeyCode::D => input.set_right(false),
+                    _ => (),
+                },
+                _ => (),
+            }
+        }
+    });
 }
