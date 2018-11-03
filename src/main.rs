@@ -19,6 +19,7 @@ use glutin::dpi::*;
 use glutin::ElementState::{Pressed, Released};
 use glutin::VirtualKeyCode;
 use glutin::WindowEvent::*;
+use glutin::DeviceEvent::*;
 use glutin::{Api, Event, EventsLoop, GlContext, GlRequest, GlWindow};
 
 use cgmath::prelude::*;
@@ -34,11 +35,6 @@ const SCR_HEIGHT: f64 = 600.0;
 const DURATION_PER_UPDATE: Duration = Duration::from_millis(16);
 
 // camera
-const CAMERA_FRONT: Vector3<f32> = Vector3 {
-    x: 0.0,
-    y: 0.0,
-    z: -1.0,
-};
 const CAMERA_UP: Vector3<f32> = Vector3 {
     x: 0.0,
     y: 1.0,
@@ -57,7 +53,7 @@ fn main() {
 
 fn create_gl_window(events_loop: &EventsLoop) -> GlWindow {
     let window = glutin::WindowBuilder::new()
-        .with_title("SMOKE WEED EVERYDAY")
+        .with_title("SPOOKY")
         .with_dimensions(LogicalSize::new(SCR_WIDTH, SCR_HEIGHT));
 
     let context = glutin::ContextBuilder::new()
@@ -65,7 +61,7 @@ fn create_gl_window(events_loop: &EventsLoop) -> GlWindow {
         .with_vsync(true);
 
     let gl_window = glutin::GlWindow::new(window, context, events_loop).unwrap();
-    gl_window.set_cursor_position(LogicalPosition::new(SCR_WIDTH / 2.0, SCR_HEIGHT / 2.0)).unwrap();
+    //gl_window.set_cursor_position(LogicalPosition::new(SCR_WIDTH / 2.0, SCR_HEIGHT / 2.0)).unwrap();
     gl_window.grab_cursor(true).unwrap();
     gl_window.hide_cursor(true);
     return gl_window;
@@ -108,6 +104,11 @@ fn run_game_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
         }).collect();
 
     let mut camera_position = Point3::new(0.0, 0.0, 3.0);
+    let mut camera_front: Vector3<f32> = Vector3 {
+        x: 0.0,
+        y: 0.0,
+        z: -1.0,
+    };
 
     let mut running = true;
     let mut previous_time = Instant::now();
@@ -121,7 +122,7 @@ fn run_game_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
     let (texture_1, texture_2) = unsafe {
         coordinate::load_and_create_textures(
             Path::new("resources/crate.jpg"),
-            Path::new("resources/snoop_dogg.jpg"),
+            Path::new("resources/pumpkin.jpg"),
         )
     };
 
@@ -152,16 +153,16 @@ fn run_game_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
             let camera_speed = 5.0 * DURATION_PER_UPDATE.subsec_millis() as f32 / 1000.0;
 
             if input.up() {
-                camera_position += camera_speed * CAMERA_FRONT;
+                camera_position += camera_speed * camera_front;
             }
             if input.down() {
-                camera_position += -(camera_speed * CAMERA_FRONT);
+                camera_position += -(camera_speed * camera_front);
             }
             if input.left() {
-                camera_position += -(CAMERA_FRONT.cross(CAMERA_UP).normalize() * camera_speed);
+                camera_position += -(camera_front.cross(CAMERA_UP).normalize() * camera_speed);
             }
             if input.right() {
-                camera_position += CAMERA_FRONT.cross(CAMERA_UP).normalize() * camera_speed;
+                camera_position += camera_front.cross(CAMERA_UP).normalize() * camera_speed;
             }
             if input.close() {
                 running = false;
@@ -185,7 +186,15 @@ fn run_game_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
             shader_program.use_program();
             shader_program.set_matrix4(&CString::new("model").unwrap(), &model);
 
-            let view: Matrix4<f32> = Matrix4::look_at(camera_position, camera_position + CAMERA_FRONT, CAMERA_UP);
+            camera_front = Vector3 {
+                x: input.yaw().to_radians().cos() * input.pitch().to_radians().cos(),
+                y: input.pitch().to_radians().sin(),
+                z: input.yaw().to_radians().sin() * input.pitch().to_radians().cos(),
+            };
+
+            camera_front.normalize();
+
+            let view: Matrix4<f32> = Matrix4::look_at(camera_position, camera_position + camera_front, CAMERA_UP);
             shader_program.set_matrix4(&CString::new("view").unwrap(), &view);
             shader_program.set_matrix4(&CString::new("projection").unwrap(), &projection);
 
@@ -202,8 +211,8 @@ fn run_game_loop(events_loop: &mut EventsLoop, gl_window: &GlWindow) {
 
 fn process_input(input: &mut Input, events_loop: &mut EventsLoop, gl_window: &GlWindow) {
     events_loop.poll_events(|event| {
-        if let Event::WindowEvent { event, .. } = event {
-            match event {
+        match event {
+            Event::WindowEvent { event, .. } => match event {
                 CloseRequested => input.set_close(true),
                 Resized(logical_size) => {
                     let dpi_factor = gl_window.get_hidpi_factor();
@@ -241,7 +250,21 @@ fn process_input(input: &mut Input, events_loop: &mut EventsLoop, gl_window: &Gl
                     _ => (),
                 },
                 _ => (),
-            }
+            },
+            Event::DeviceEvent { event, .. } => match event {
+                MouseMotion { delta } => {
+                    let (x_delta, y_delta) = (delta.0 as f32, delta.1 as f32);
+                    let sensitivity: f32 = 0.1;
+
+                    let current_yaw = input.yaw();
+                    input.set_yaw(current_yaw + x_delta * sensitivity);
+
+                    let current_pitch = input.pitch();
+                    input.set_pitch(current_pitch + (-y_delta) * sensitivity);
+                },
+                _ => (),
+            },
+            _ => (),
         }
     });
 }
